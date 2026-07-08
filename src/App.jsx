@@ -117,7 +117,8 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const isAdmin = session?.user?.email === import.meta.env.VITE_ADMIN_EMAIL;
+  const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || 'admin@gmail.com';
+  const isAdmin = Boolean(session?.user?.email && session.user.email === adminEmail);
 
   // Listen to URL path/hash to open admin login
   useEffect(() => {
