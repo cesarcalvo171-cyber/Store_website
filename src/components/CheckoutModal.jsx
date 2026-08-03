@@ -38,46 +38,54 @@ export default function CheckoutModal({
 
   const handleStep1Submit = (e) => {
     e.preventDefault();
-    if (validate()) setStep(2);
+    if (validate()) {
+      handleSendWhatsApp();
+    }
   };
 
 
-  const generateWhatsAppMessage = () => {
-    const greeting = clientName.trim()
-      ? `Hola, soy *${clientName.trim()}*`
-      : `Hola`;
-
-    const phoneNote = clientPhone.trim()
-      ? ` | Mi contacto: ${clientPhone.trim()}`
-      : '';
-
-    let msg = `${greeting}${phoneNote}. Me gustaría confirmar el siguiente pedido:\n\n`;
-    msg += `📋 *Detalle del Pedido:*\n`;
+  const generateWhatsAppMessage = (currentOrderNumber) => {
+    const randomOrderNum = currentOrderNumber || ('WA-' + Math.floor(100000 + Math.random() * 900000));
+    let msg = ` PEDIDO ${randomOrderNum}\n`;
+    msg += `${clientName.trim() || 'Anónimo'}`;
+    if (clientPhone.trim()) {
+      msg += ` | 📱 ${clientPhone.trim()}`;
+    }
+    msg += `\nPRODUCTOS:\n`;
 
     cartItems.forEach((item) => {
-      const sizeStr = item.selectedSize ? ` · Talla: ${item.selectedSize}` : '';
-      const colorStr = item.selectedColor ? ` · Color: ${item.selectedColor.name}` : '';
-      const lineTotal = item.price * item.quantity;
-      msg += `• *${item.name}*${sizeStr}${colorStr}\n`;
-      msg += `   ${item.quantity} und × $${item.price.toFixed(2)} = *$${lineTotal.toFixed(2)} USD* (C${(lineTotal * USD_TO_NIO).toFixed(0)} NIO)\n`;
+      if (!item) return;
+      const itemName = item.name || 'Producto';
+      const variantName = item.selectedColor?.name || item.color_name || '';
+      const sizeStr = item.selectedSize ? item.selectedSize.replace(/(\d+)\s*(ml)/i, '$1 $2') : 'Única';
+      const itemQty = Number(item.quantity) || 1;
+      const itemPrice = Number(item.price) || 0;
+      const itemTotal = itemQty * itemPrice;
+      
+      msg += `• ${itemQty}x ${itemName} ${variantName ? `(${variantName})` : ''} - ${sizeStr} = $${itemTotal.toFixed(2)}\n`;
+      
+      let imageUrl = '';
+      if (item.image && typeof item.image === 'string') {
+        if (item.image.startsWith('http')) {
+          imageUrl = item.image;
+        } else if (item.image.startsWith('/')) {
+          const encodedPath = item.image.split('/').map(segment => encodeURIComponent(segment)).join('/');
+          imageUrl = window.location.origin + encodedPath;
+        }
+      }
 
-      // Incluir URL de la imagen del producto para referencia visual
-      if (item.image && item.image.startsWith('http')) {
-        msg += `   🖼️ Ver foto: ${item.image}\n`;
+      if (imageUrl) {
+        msg += `   ${imageUrl}\n`;
       }
     });
 
-    const subtotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
-    const discountAmount = (subtotal * discountPercent) / 100;
+    const subtotalCalc = cartItems.reduce((acc, item) => acc + (Number(item?.price) || 0) * (Number(item?.quantity) || 1), 0);
+    const discountAmountCalc = (subtotalCalc * discountPercent) / 100;
 
-    msg += `\n💰 *Resumen:*\n`;
-    msg += `- Subtotal: $${subtotal.toFixed(2)} USD (C${(subtotal * USD_TO_NIO).toFixed(0)} NIO)\n`;
+    msg += `\n TOTAL: $${total.toFixed(2)}\n`;
     if (discountPercent > 0) {
-      msg += `- Descuento (${discountPercent}%): -$${discountAmount.toFixed(2)}\n`;
+      msg += `(Subtotal: $${subtotalCalc.toFixed(2)} - Desc ${discountPercent}%)`;
     }
-
-    msg += `\n💵 *TOTAL: $${total.toFixed(2)} USD* ≈ C${(total * USD_TO_NIO).toFixed(0)} NIO\n\n`;
-    msg += `Quedo atento/a a sus instrucciones de pago. ¡Gracias! 😊`;
 
     return msg;
   };
@@ -149,9 +157,9 @@ export default function CheckoutModal({
       console.error('Error guardando la venta en Supabase:', err);
     }
 
-    const message = generateWhatsAppMessage();
-    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    const msg = generateWhatsAppMessage(randomOrderNum);
+    const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
+    window.open(whatsappUrl, '_blank');
     
     setOrderNumber(randomOrderNum);
     setStep(3);
@@ -252,21 +260,7 @@ export default function CheckoutModal({
                   )}
                 </div>
 
-                {/* Envío seleccionado (read-only resumen) */}
-                <div className="flex items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700">
-                  {shippingType === 'maritimo'
-                    ? <Anchor size={16} className="text-zinc-500 flex-shrink-0" />
-                    : <Plane size={16} className="text-zinc-500 flex-shrink-0" />
-                  }
-                  <div>
-                    <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
-                      Envío {shipping.label}
-                    </p>
-                    <p className="text-[10px] text-zinc-400 font-light">
-                      {shipping.time} · ${shippingCost.toFixed(2)} USD (C${(shippingCost * USD_TO_NIO).toFixed(0)} NIO)
-                    </p>
-                  </div>
-                </div>
+
 
                 {/* Note */}
                 <div className="flex items-start gap-2.5 p-3 bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-[10px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
@@ -279,53 +273,16 @@ export default function CheckoutModal({
                     type="submit"
                     className="w-full bg-[#0A0A0A] dark:bg-[#FAF9F6] text-[#FAF9F6] dark:text-[#0A0A0A] hover:bg-zinc-800 dark:hover:bg-white text-xs font-bold py-3.5 uppercase tracking-[0.2em] flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
                   >
-                    Revisar y Enviar por WhatsApp
-                    <ArrowRight size={14} />
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* STEP 2: Previsualización */}
-            {step === 2 && (
-              <div className="space-y-4 text-left">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-base font-semibold uppercase tracking-wider">Vista previa del mensaje</h3>
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="text-xs text-zinc-400 hover:text-black dark:hover:text-white underline cursor-pointer"
-                  >
-                    ← Volver
-                  </button>
-                </div>
-
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 font-light leading-relaxed">
-                  Este es el mensaje que se enviará a la vendedora. Incluye los links de las fotos de cada prenda para referencia visual.
-                </p>
-
-                <div className="bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-4 font-mono text-[10px] text-zinc-700 dark:text-zinc-300 max-h-56 overflow-y-auto whitespace-pre-wrap leading-relaxed select-text">
-                  {generateWhatsAppMessage()}
-                </div>
-
-                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed">
-                  <span className="text-base flex-shrink-0">💡</span>
-                  <span>Los links de imagen solo funcionan si la tienda está publicada en internet. La vendedora puede abrirlos con un toque para ver la foto de cada prenda.</span>
-                </div>
-
-                <div className="pt-1">
-                  <button
-                    onClick={handleSendWhatsApp}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 uppercase text-xs tracking-[0.2em] flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
-                  >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="14" height="14" fill="currentColor">
                       <path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7.9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/>
                     </svg>
                     Confirmar y Enviar por WhatsApp
                   </button>
                 </div>
-              </div>
+              </form>
             )}
+
+
 
             {/* STEP 3: Éxito */}
             {step === 3 && (
