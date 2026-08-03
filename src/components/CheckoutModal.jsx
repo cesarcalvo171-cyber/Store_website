@@ -49,7 +49,7 @@ export default function CheckoutModal({
     let msg = ` PEDIDO ${randomOrderNum}\n`;
     msg += `${clientName.trim() || 'Anónimo'}`;
     if (clientPhone.trim()) {
-      msg += ` | 📱 ${clientPhone.trim()}`;
+      msg += ` | ${clientPhone.trim()}`;
     }
     msg += `\nPRODUCTOS:\n`;
 
